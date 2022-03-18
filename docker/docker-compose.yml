@@ -1,0 +1,52 @@
+version: '3.5'
+
+services:
+  db:
+    container_name: ${PROJECT_NAME}-db
+    image: mysql
+    restart: always
+    networks:
+      - backend
+    environment:
+      - MYSQL_ROOT_PASSWORD=${ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+      - MYSQL_USER=${DB_USER}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "${DB_PORT}:3306"
+
+  web:
+    container_name: ${PROJECT_NAME}-web
+    build:
+      context: ./..
+      dockerfile: docker/nginx/Dockerfile
+      network: host
+    restart: always
+    ports:
+      - "${ADMIN_WEB_PORT}:8080"
+    volumes:
+      - ../app:/app:delegated
+    depends_on:
+      - php
+    networks:
+      - backend
+
+  php:
+    container_name: ${PROJECT_NAME}-php
+    build:
+      context: ./..
+      dockerfile: docker/php/Dockerfile
+      network: host
+      args:
+        DB_NAME: $DB_NAME
+        DB_USER: $DB_USER
+        DB_PASSWORD: $DB_PASSWORD
+    working_dir: /app
+    restart: always
+    volumes:
+      - ../app:/app:delegated
+    networks:
+      - backend
+
+networks:
+  backend:

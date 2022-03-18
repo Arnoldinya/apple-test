@@ -1,0 +1,30 @@
+#/bin/bash
+
+if [ -f .env ]; then
+. .env
+fi
+
+docker-compose -f docker-compose-local.yml rm -f -s -v
+docker-compose -f docker-compose-local.yml down -v
+
+PROJECT_NAME=$PROJECT_NAME DB_NAME=$DB_NAME DB_USER=$DB_USER DB_PASSWORD=$DB_PASSWORD DB_PORT=$DB_PORT API_WEB_PORT=$API_WEB_PORT ADMIN_WEB_PORT=$ADMIN_WEB_PORT VOLUME_DATA=$VOLUME_DATA ROOT_PASSWORD=$ROOT_PASSWORD CDN_URL_UPLOAD=$CDN_URL_UPLOAD CDN_URL_FRONT=$CDN_URL_FRONT CDN_LOGIN=$CDN_LOGIN CDN_PASSWORD=$CDN_PASSWORD AD_HOST=$AD_HOST AD_PORT=$AD_PORT AD_BASE_DN=$AD_BASE_DN FTP_HOST=$FTP_HOST FTP_LOGIN=$FTP_LOGIN FTP_PASSWORD=$FTP_PASSWORD FTP_PATH=$FTP_PATH FRONT_DOMAIN=$FRONT_DOMAIN API_DOMAIN=$API_DOMAIN ES_PORT=$ES_PORT ES_HTTP_ADDRESS=$ES_HTTP_ADDRESS ES_USER=$ES_USER ES_PASSWORD=$ES_PASSWORD AD_ADMIN_ROLE=$AD_ADMIN_ROLE AD_BILD_ROLE=$AD_BILD_ROLE AD_CHIEF_ROLE=$AD_CHIEF_ROLE AD_EDITOR_ROLE=$AD_EDITOR_ROLE AD_MANAGER_ROLE=$AD_MANAGER_ROLE AD_NEED_LOGIN=$AD_NEED_LOGIN docker-compose -f docker-compose-local.yml up -d --build
+
+docker cp nginx/site.conf $PROJECT_NAME-web:/etc/nginx/conf.d/site.conf
+docker exec $PROJECT_NAME-web sh -c "nginx -s reload"
+
+if [ $VOLUME_DATA == 'data-volume' ]; then
+docker cp ../app $PROJECT_NAME-php:./
+fi
+
+docker exec $PROJECT_NAME-php sh -c "apt-get update && apt-get -y install libldap2-dev && rm -rf /var/lib/apt/lists/* && docker-php-ext-configure ldap --with-libdir=lib/x86_64-linux-gnu && docker-php-ext-install ldap"
+
+docker-compose restart php
+
+docker exec $PROJECT_NAME-php sh -c "composer install"
+docker exec $PROJECT_NAME-php sh -c "php init --no_interactive --env=Development --db_host=$PROJECT_NAME-db --db_name=$DB_NAME --db_username=$DB_USER --db_password=$DB_PASSWORD --cdn_url_upload=$CDN_URL_UPLOAD --cdn_url_front=$CDN_URL_FRONT --cdn_login=$CDN_LOGIN --cdn_password=$CDN_PASSWORD --ad_host=$AD_HOST --ad_port=$AD_PORT --ad_base_dn=$AD_BASE_DN --ad_admin_role=$AD_ADMIN_ROLE --ad_bild_role=$AD_BILD_ROLE --ad_chief_role=$AD_CHIEF_ROLE --ad_editor_role=$AD_EDITOR_ROLE --ad_manager_role=$AD_MANAGER_ROLE --ftp_host=$FTP_HOST --ftp_login=$FTP_LOGIN --ftp_password=$FTP_PASSWORD --ftp_path=$FTP_PATH --front_domain=$FRONT_DOMAIN --api_domain=$API_DOMAIN --es_http_address=$ES_HTTP_ADDRESS --es_user=$ES_USER --es_password=$ES_PASSWORD --es_index=$ES_INDEX  --ad_need_login=$AD_NEED_LOGIN --centrifugo_url=$CENTRIFUGO_URL --centrifugo_secret=$CENTRIFUGO_SECRET --centrifugo_namespace=$CENTRIFUGO_NAMESPACE --centrifugo_channel=$CENTRIFUGO_CHANNEL"
+docker exec $PROJECT_NAME-php sh -c "php yii migrate --interactive=0 --migrationPath=@yii/rbac/migrations"
+docker exec $PROJECT_NAME-php sh -c "php yii migrate/up --interactive=0 1"
+docker exec $PROJECT_NAME-php sh -c "php yii rbac/init"
+docker exec $PROJECT_NAME-php sh -c "php yii rbac/create-user $ADMIN_SURNAME $ADMIN_NAME $ADMIN_MAIL $ADMIN_PASSWORD"
+docker exec $PROJECT_NAME-php sh -c "php yii migrate --interactive=0"
+docker exec $PROJECT_NAME-php sh -c "php yii migrate --interactive=0 --migrationNamespaces='yii\queue\db\migrations'"
